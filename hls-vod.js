@@ -54,13 +54,23 @@ var getMimeType = function(file) {
 	else return 'application/octet-stream';
 }
 
+var cleanupCache = function(sequence) {
+    var files = fs.readdirSync(outputPath);
+    sequence = sequence || 100000;
+    files.filter(function (filename ) {
+        return (filename.match(/stream(\d+).ts/) && (RegExp.$1 * 1) < sequence);
+    }).forEach( function (filename) {
+        fs.unlink(outputPath + "/" + filename);
+    });
+}
+
 var spawnNewProcess = function(file, playlistPath) {
 	var outputUrlPrefix = '/segment/';
 
 	
 	if (transcoderType === 'ffmpeg') {
 		//var args = ['-i', file, '-async', '1', '-b:a', 64 + 'k', '-vf', 'scale=min(' + targetWidth + '\\, iw):-1', '-b:v', videoBitrate + 'k', '-ar', '44100', '-ac', '2', '-vcodec', 'libx264', '-x264opts', 'level=3.0', '-profile:v', 'baseline', '-preset:v' ,'superfast', '-acodec', 'libaacplus', '-threads', '0', '-flags', '-global_header', '-map', '0', '-f', 'segment', '-segment_time', '10', '-segment_list', 'stream.m3u8', '-segment_format', 'mpegts', '-segment_list_flags', 'live', 'stream%05d.ts'];
-		var args = ['-i', file, '-async', '1', '-acodec', 'libmp3lame', '-b:a', 128 + 'k', '-vf', 'scale=min(' + targetWidth + '\\, iw):-1', '-b:v', videoBitrate + 'k', '-ar', '48000', '-ac', '2', '-r', '25', '-vcodec', 'libx264', '-x264opts', 'level=3.1', '-profile:v', 'main', '-preset:v' ,'superfast', '-threads', '0', '-flags', '-global_header', '-map', '0:v:0', '-map', '0:a:1', '-f', 'segment', '-segment_time', '10', '-segment_list', 'stream.m3u8', '-segment_format', 'mpegts', '-segment_list_flags', 'live', '-segment_list_size', '50', '-force_key_frames', 'expr:gte(t,n_forced*10)', 'stream%05d.ts'];
+		var args = ['-i', file, '-async', '1', '-acodec', 'libmp3lame', '-b:a', 128 + 'k', '-vf', 'scale=min(' + targetWidth + '\\, iw):-1', '-b:v', videoBitrate + 'k', '-ar', '48000', '-ac', '2', '-r', '25', '-vcodec', 'libx264', '-x264opts', 'level=3.1', '-profile:v', 'main', '-preset:v' ,'superfast', '-threads', '0', '-flags', '-global_header', '-map', '0:v:0', '-map', '0:a:1', '-f', 'segment', '-segment_time', '10', '-segment_list', 'stream.m3u8', '-segment_format', 'mpegts', '-segment_list_flags', 'live', '-segment_list_size', '10', '-force_key_frames', 'expr:gte(t,n_forced*10)', 'stream%05d.ts'];
 	}
 	else {
 		var playlistPath = 'stream.m3u8';
@@ -121,20 +131,7 @@ var pollForPlaylist = function(file, response, playlistPath) {
                     var seqTag=data.match(/#EXT-X-MEDIA-SEQUENCE:(\d+)/);
                     var sequence = RegExp.$1;
                     if (sequence > 0) {
-                        fs.readdir(outputPath, function(err, files ) {
-                            if (!err) {
-                                for (var tsfile in files) {
-                                    if (files[tsfile].match(/stream(\d+).ts/) && (RegExp.$1 * 1) < sequence) {
-                                        // console.log("Sequence: "+sequence+"/"+RegExp.$1 * 1+" Stream: " + files[tsfile]);
-                                        fs.unlink(outputPath + "/" + files[tsfile], function(err) {
-                                            if (err) console.log("Error unlinking " + err);
-                                        });
-                                    }
-                                }
-                            } else {
-                                    console.log("Error reading cache dir");
-                            }
-                        });
+                        cleanupCache(sequence);
                     }
 					response.write(data);
 					response.end();
@@ -183,6 +180,7 @@ var handlePlaylistRequest = function(file, response) {
 		// Make sure old one gets killed
 		if (encoderProcesses[currentFile]) {
 			killProcess(encoderProcesses[currentFile], function() {
+                cleanupCache();
 				fs.unlink(playlistPath, function (err) {
 					spawnNewProcess(file, playlistPath, outputPath);
 					pollForPlaylist(file, response, playlistPath);
@@ -191,6 +189,7 @@ var handlePlaylistRequest = function(file, response) {
 			});
 		}
 		else {
+            cleanupCache();
 			fs.unlink(playlistPath, function (err) {
 				spawnNewProcess(file, playlistPath, outputPath);
 				pollForPlaylist(file, response, playlistPath);
