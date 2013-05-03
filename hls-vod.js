@@ -11,7 +11,7 @@ var express = require('express');
 
 // Parameters
 var listenPort = 4040;
-var videoBitrate = 1000;
+var videoBitrate = 2000;
 var enableThumbnails = true;
 var audioBitrate = 128;
 var targetWidth = 1280;
@@ -22,7 +22,7 @@ var transcoderPath = '/usr/local/bin/ffmpeg';
 var transcoderType = 'ffmpeg';
 var processCleanupTimeout = 6 * 60 * 60 * 1000;
 
-var debug = false;
+var debug = true;
 
 
 var videoExtensions = ['.mp4', '.avi', '.mkv', '.wmv', '.asf', '.m4v', '.flv', '.mpg', '.mpeg', '.mov', '.vob'];
@@ -110,16 +110,32 @@ var pollForPlaylist = function(file, response, playlistPath) {
 			response.end();
 		}
 		else {
-			fs.readFile(playlistPath, function (err, data) {
+			fs.readFile(playlistPath, 'utf8', function (err, data) {
 				if (err || data.length === 0) {
 					numTries++;
 					setTimeout(tryOpenFile, 500);
 				}
 				else {
-					if (!debug) {
-						response.setHeader('Content-Type', 'application/x-mpegURL');
-					}
+					response.setHeader('Content-Type', 'application/x-mpegURL');
 					//console.log('response: ' + data);
+                    var seqTag=data.match(/#EXT-X-MEDIA-SEQUENCE:(\d+)/);
+                    var sequence = RegExp.$1;
+                    if (sequence > 0) {
+                        fs.readdir(outputPath, function(err, files ) {
+                            if (!err) {
+                                for (var tsfile in files) {
+                                    if (files[tsfile].match(/stream(\d+).ts/) && (RegExp.$1 * 1) < sequence) {
+                                        // console.log("Sequence: "+sequence+"/"+RegExp.$1 * 1+" Stream: " + files[tsfile]);
+                                        fs.unlink(outputPath + "/" + files[tsfile], function(err) {
+                                            if (err) console.log("Error unlinking " + err);
+                                        });
+                                    }
+                                }
+                            } else {
+                                    console.log("Error reading cache dir");
+                            }
+                        });
+                    }
 					response.write(data);
 					response.end();
 				}
