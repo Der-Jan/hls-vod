@@ -18,11 +18,11 @@ var targetWidth = 1280;
 var searchPaths = [];
 var rootPath = null;
 var outputPath = './cache';
-var transcoderPath = '/usr/bin/vlc';
-var transcoderType = 'vlc';
+var transcoderPath = '/usr/local/bin/ffmpeg';
+var transcoderType = 'ffmpeg';
 var processCleanupTimeout = 6 * 60 * 60 * 1000;
 
-var debug = true;
+var debug = false;
 
 
 var videoExtensions = ['.mp4', '.avi', '.mkv', '.wmv', '.asf', '.m4v', '.flv', '.mpg', '.mpeg', '.mov', '.vob'];
@@ -60,7 +60,7 @@ var spawnNewProcess = function(file, playlistPath) {
 	
 	if (transcoderType === 'ffmpeg') {
 		//var args = ['-i', file, '-async', '1', '-b:a', 64 + 'k', '-vf', 'scale=min(' + targetWidth + '\\, iw):-1', '-b:v', videoBitrate + 'k', '-ar', '44100', '-ac', '2', '-vcodec', 'libx264', '-x264opts', 'level=3.0', '-profile:v', 'baseline', '-preset:v' ,'superfast', '-acodec', 'libaacplus', '-threads', '0', '-flags', '-global_header', '-map', '0', '-f', 'segment', '-segment_time', '10', '-segment_list', 'stream.m3u8', '-segment_format', 'mpegts', '-segment_list_flags', 'live', 'stream%05d.ts'];
-		var args = ['-i', file, '-async', '1', '-acodec', 'libmp3lame', '-b:a', 128 + 'k', '-vf', 'scale=min(' + targetWidth + '\\, iw):-1', '-b:v', videoBitrate + 'k', '-ar', '44100', '-ac', '2', '-vcodec', 'libx264', '-x264opts', 'level=3.0', '-profile:v', 'baseline', '-preset:v' ,'superfast', '-threads', '0', '-flags', '-global_header', '-map', '0', '-f', 'segment', '-segment_time', '10', '-segment_list', 'stream.m3u8', '-segment_format', 'mpegts', '-segment_list_flags', 'live', 'stream%05d.ts'];
+		var args = ['-i', file, '-async', '1', '-acodec', 'libmp3lame', '-b:a', 128 + 'k', '-vf', 'scale=min(' + targetWidth + '\\, iw):-1', '-b:v', videoBitrate + 'k', '-ar', '48000', '-ac', '2', '-r', '25', '-vcodec', 'libx264', '-x264opts', 'level=3.1', '-profile:v', 'main', '-preset:v' ,'superfast', '-threads', '0', '-flags', '-global_header', '-map', '0:v:0', '-map', '0:a:1', '-f', 'segment', '-segment_time', '10', '-segment_list', 'stream.m3u8', '-segment_format', 'mpegts', '-segment_list_flags', 'live', '-segment_list_size', '50', '-force_key_frames', 'expr:gte(t,n_forced*10)', 'stream%05d.ts'];
 	}
 	else {
 		var playlistPath = 'stream.m3u8';
@@ -191,6 +191,8 @@ var handlePlaylistRequest = function(file, response) {
 var listFiles = function(response) {
 	var searchRegex = '(' + videoExtensions.join('|') + ')$';
 
+    response.setHeader('Content-Type','text/html');
+    response.write('<!DOCTYPE HTML><html><body><video width="640" height="360" id="video" controls></video>');
 	searchPaths.forEach(function(searchPath) {
 		wrench.readdirRecursive(searchPath, function(err, curFiles) {
 			if (err) {
@@ -198,6 +200,7 @@ var listFiles = function(response) {
 				return;
 			}
 			if (curFiles == null) {
+                response.write('</html></body>');
 				response.end(); // No more files
 				return;
 			}
@@ -212,7 +215,7 @@ var listFiles = function(response) {
 					}
 
 					response.write(
-						'<a href="/hls/?file=' + encodeURIComponent(filePath) + '" title="' + sanitize(filePath).entityEncode() + '">'
+						'<a href="#" onclick="document.getElementById(\'video\').src=\'/hls/?file=' + encodeURIComponent(filePath) + '\'; return false;" title="' + sanitize(filePath).entityEncode() + '">'
 						+ sanitize(friendlyName).entityEncode() + '</a>'
 						+ ' (' + sanitize(path.extname(filePath)).entityEncode() + ')'
 						+ ' (<a href="' + sanitize(path.join('/raw', filePath)).entityEncode() + '">Raw</a>)<br />');
