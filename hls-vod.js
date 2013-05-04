@@ -20,9 +20,11 @@ var rootPath = null;
 var outputPath = './cache';
 var transcoderPath = '/usr/local/bin/ffmpeg';
 var transcoderType = 'ffmpeg';
-var processCleanupTimeout = 6 * 60 * 60 * 1000;
+var processCleanupTimeout = 2 * 60 * 1000;
+var processCleanupInterval = null;
+var lastRequest = Date.now();
 
-var debug = true;
+var debug = false;
 
 
 var videoExtensions = ['.mp4', '.avi', '.mkv', '.wmv', '.asf', '.m4v', '.flv', '.mpg', '.mpeg', '.mov', '.vob'];
@@ -97,15 +99,25 @@ var spawnNewProcess = function(file, playlistPath) {
 	encoderChild.on('exit', function(code) {
 		console.log('Transcoder exited with code ' + code);
 
+        if (processCleanupInterval) {
+            clearInterval(processCleanupInterval);
+            processCleanupInterval = null;
+        }
 		delete encoderProcesses[file];
 	});
 
 	// Kill any "zombie" processes
-	setTimeout(function() {
-		if (encoderProcesses[file]) {
+	processCleanupInterval = setInterval(function() {
+        console.log("checking encoder");
+        if (((Date.now() - lastRequest) > processCleanupTimeout) && encoderProcesses[file]) {
 			console.log('Killing long running process');
-
-			killProcess(encoderProcesses[file]);
+            
+            clearInterval(processCleanupInterval);
+            processCleanupInterval = null;
+			killProcess(encoderProcesses[file], function() {
+                cleanupCache();
+                currentFile = null;
+            });
 		}
 	}, processCleanupTimeout);
 };
@@ -168,8 +180,10 @@ var handlePlaylistRequest = function(file, response) {
 		return;
 	}
 
-	file = path.join('/', file); // Remove ".." etc
-	file = path.join(rootPath, file);
+    if (!file.match(/^rtp:\/\//)) {
+	    file = path.join('/', file); // Remove ".." etc
+	    file = path.join(rootPath, file);
+    }
 	var playlistPath = path.join(outputPath, '/stream.m3u8');
 
 	if (currentFile != file) {
@@ -207,7 +221,9 @@ var listFiles = function(response) {
 	var searchRegex = '(' + videoExtensions.join('|') + ')$';
 
     response.setHeader('Content-Type','text/html');
-    response.write('<!DOCTYPE HTML><html><body><video width="640" height="360" id="video" controls></video>');
+    response.write('<!DOCTYPE HTML><html><body><video width="640" height="360" id="video" controls src="' +
+    '/hls/?file=' + encodeURIComponent('rtp://239.35.10.1:10000/') + '"></video>' +
+    '<a href="#" onclick="getElementById(\'video\').src=\'/hls/?file=' + encodeURIComponent('rtp://239.35.10.1:10000/') + '\'; getElementById(\'video\').play(); return false;" title="Das Erste HD">Das Erste HD</a><br />');
 	searchPaths.forEach(function(searchPath) {
 		wrench.readdirRecursive(searchPath, function(err, curFiles) {
 			if (err) {
@@ -476,6 +492,7 @@ app.use(express.bodyParser());
 
 app.all('*', function(request, response, next) {
 	console.log(request.url);
+    lastRequest = Date.now();
 	next();
 });
 
